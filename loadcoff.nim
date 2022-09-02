@@ -158,15 +158,15 @@ for section in sections:
           sizeof(int32)
         )
         var refSection = cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) + cast[int32](offsetVal)
-        var endOfReloc = cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) + cast[int32](relocation.VirtualAddress + 4)
+        var endOfReloc = cast[int32](patchAddress + 4)
         if endOfReloc - refSection > 0xffffffff:
           echo "- error: alloc > 4 gigs away, exitting"
           quit(1)
         echo &"\t  OffsetVal:  0x{toHex(offsetVal)}"
         echo &"\t  RefSection: 0x{toHex(refSection)}"
         echo &"\t  RelocEnd: 0x{toHex(endOfReloc)}"
-        offsetVal = cast[int32](endOfReloc) - cast[int32](refSection)
-        echo &"\t  OffsetVal: 0x{toHex(offsetVal)}"
+        offsetVal =  cast[int32](refSection) - cast[int32](endOfReloc) 
+        echo &"\t  OffsetVal: 0x{(offsetVal)}"
         
         copyMem(
           patchAddress,
