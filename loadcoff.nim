@@ -157,8 +157,8 @@ for section in sections:
           patchAddress,
           sizeof(int32)
         )
-        var refSection = cast[int](sectionMapping[sectionIndex]) + cast[int](offsetVal)
-        var endOfReloc = cast[int](sectionMapping[sectionIndex]) + cast[int](relocation.VirtualAddress) + 4
+        var refSection = cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) + cast[int32](offsetVal)
+        var endOfReloc = cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) + cast[int32](relocation.VirtualAddress + 4)
         if endOfReloc - refSection > 0xffffffff:
           echo "- error: alloc > 4 gigs away, exitting"
           quit(1)
@@ -214,7 +214,11 @@ for section in sections:
         sizeof(uint64)
       )
 
-      let offsetVal = cast[uint32](cast[int](functionMapping) + (fmCount * 8) - cast[int](patchAddress) + 4)
+      let offsetVal = (
+        cast[int32](functionMapping) + 
+        cast[int32](fmCount * 8) - 
+        cast[int32](patchAddress + 4)
+      )
 
       copyMem(
         patchAddress,

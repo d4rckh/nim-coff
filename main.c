@@ -8,6 +8,6 @@ int hey = 1000;
 
 void go(char * args, unsigned long alen) {
     MSVCRT$printf("aa%i", hey);
-    MSVCRT$printf("HELLLLLLLLLLOOOOOOOOOOO\n");
+    MSVCRT$printf("a\n");
     USER32$MessageBoxA(NULL, "a", "b", S_OK);
 }
