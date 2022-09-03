@@ -6,8 +6,12 @@ WINBASEAPI int __cdecl USER32$MessageBoxA(HWND hwnd, LPCSTR lpText, LPCSTR lpCap
 
 int hey = 1000;
 
-void go(char * args, unsigned long alen) {
+void hayo() {
     MSVCRT$printf("aa%i", hey);
     MSVCRT$printf("a\n");
+}
+
+void go(char * args, unsigned long alen) {
+    hayo();
     USER32$MessageBoxA(NULL, "a", "b", S_OK);
 }

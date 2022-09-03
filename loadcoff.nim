@@ -12,55 +12,35 @@ import lib/[
 ]
 
 let fileBuf = cast[seq[byte]](readFile("main.o"))
-
-# parse the file header
-# its the first thing in the obj file
 let fileHeader = cast[ptr FileHeader](unsafeAddr fileBuf[0])
 
-# get a pointer to the array of section info structs
-# its located after the file header, and the optional headers 
 let sectionArray = cast[ptr SectionHeader](
   (unsafeAddr fileBuf[0]) + 
   cast[int](fileHeader.SizeOfOptionalHeader) + 
   sizeof(FileHeader)
 )
 
-# get a pointer to the array of symbol table entries
-# its location is given in the file header
 var symbolArray = cast[ptr SymbolTableEntry](
   (unsafeAddr fileBuf[0]) +
   cast[int](fileHeader.PointerToSymbolTable)
 )
 
-echo "number of symbols: " & $fileHeader.NumberOfSymbols
-echo "number of sections: " & $fileHeader.NumberOfSections
-echo "pointer to symbol table: 0x" & $toHex(fileHeader.PointerToSymbolTable)
+echo "Symbols: " & $fileHeader.NumberOfSymbols
+echo "Sections: " & $fileHeader.NumberOfSections
+# echo "pointer to symbol table: 0x" & $toHex(fileHeader.PointerToSymbolTable)
 
-# for i in 0..(fileHeader.NumberOfSymbols):
-#   let sym: ptr SymbolTableEntry = (symbolArray + cast[int](fileHeader.NumberOfSymbols))
-
-#   echo sym.Type
-
-# we will store our sections here
 var sections: seq[tuple[
-  name: string, offset: uint64, header: ptr SectionHeader, number: int
+  name: string, header: ptr SectionHeader, number: int
 ]]
-var textSectionHeader: ptr SectionHeader 
-
-# for each section, we will append it to our sections sequence
-# and calculate the offset from the beginning of sections to it
 
 var sectionMapping: array[25, LPVOID]
 var functionMapping: LPVOID
+var fmCount = 0
 
 var totalSize: uint64 = 0
 for i in 0..(cast[int](fileHeader.NumberOfSections) - 1):
   let sectionHeader: ptr SectionHeader = (sectionArray + i)
   let sectionName = $(unsafeAddr sectionHeader.Name[0])
-
-  # store the text section header separately
-  if sectionName == ".text":
-    textSectionHeader = sectionHeader
 
   echo &"Found {sectionName} @ offset {totalSize}:"
   echo &"\tVirtual Size: {sectionHeader.VirtualSize}"
@@ -91,7 +71,7 @@ for i in 0..(cast[int](fileHeader.NumberOfSections) - 1):
     )
   else: echo "\tFailed to allocate"
 
-  sections.add (name: sectionName, offset: totalSize, header: sectionHeader, number: i)
+  sections.add (name: sectionName, header: sectionHeader, number: i)
   totalSize += sectionHeader.SizeOfRawData
 
 functionMapping = VirtualAlloc(
@@ -100,7 +80,6 @@ functionMapping = VirtualAlloc(
   bitor(MEM_COMMIT, MEM_RESERVE, MEM_TOP_DOWN), 
   PAGE_EXECUTE_READWRITE
 )
-var fmCount = 0
 
 let symVals: ptr char = cast[ptr char](symbolArray + cast[int](fileHeader.NumberOfSymbols))
 
@@ -141,7 +120,7 @@ for section in sections:
         )
         echo &"\t  OffsetVal:    0x{toHex(offsetVal)}"
 
-        offsetVal += cast[uint64](sectionMapping[sectionIndex])
+        offsetVal = cast[uint64](sectionMapping[sectionIndex]) + offsetVal
         
         echo &"\t  NewOffsetVal: 0x{toHex(offsetVal)}"
 
@@ -157,30 +136,30 @@ for section in sections:
           patchAddress,
           sizeof(int32)
         )
-        var refSection = cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) + cast[int32](offsetVal)
-        var endOfReloc = cast[int32](patchAddress + 4)
+        var refSection = cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) + offsetVal
+        var endOfReloc = cast[int32](patchAddress) + 4
         if endOfReloc - refSection > 0xffffffff:
           echo "- error: alloc > 4 gigs away, exitting"
           quit(1)
         echo &"\t  OffsetVal:  0x{toHex(offsetVal)}"
         echo &"\t  RefSection: 0x{toHex(refSection)}"
         echo &"\t  RelocEnd: 0x{toHex(endOfReloc)}"
-        offsetVal =  cast[int32](refSection) - cast[int32](endOfReloc) 
-        echo &"\t  OffsetVal: 0x{(offsetVal)}"
+        offsetVal = refSection - endOfReloc 
+        echo &"\t  OffsetVal: 0x{toHex(offsetVal)}"
         
         copyMem(
           patchAddress,
           addr offsetVal, 
-          sizeof(int32)
+          sizeof(uint32)
         )
       elif relocation.Type == IMAGE_REL_AMD64_REL32:
         var offsetVal: int32
         copyMem(addr offsetVal, patchAddress, sizeof(int32))
         echo &"\t  OffsetVal:  0x{toHex(offsetVal)}"
-        if cast[int32](sectionMapping[sectionIndex]) - (cast[int32](patchAddress) + 4) > 0xffffffff:
+        if cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) - (cast[int32](patchAddress) + 4) > 0xffffffff:
           echo "- error relocation 4 gigs away"
           quit(0)
-        offsetVal += cast[int32](sectionMapping[sectionIndex]) - (cast[int32](patchAddress) + 4)
+        offsetVal += cast[int32](sectionMapping[symbolEntry.SectionNumber - 1]) - (cast[int32](patchAddress) + 4)
         copyMem(patchAddress, addr offsetVal, sizeof(int32))
         echo &"\t  OffsetVal:  0x{toHex(offsetVal)}"
       continue
@@ -227,8 +206,6 @@ for section in sections:
       )
 
       inc fmCount
-
-type COFFEntry = proc(args:ptr byte, argssize: uint32) {.stdcall.}
 
 for i in 0..(cast[int](fileHeader.NumberOfSymbols) - 1):
   let symbol = symbolArray[i]
